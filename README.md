@@ -59,6 +59,6 @@ Deploy this directory as a separate Node.js service. Set the environment variabl
 
 ## Repository links
 
-- Client: https://github.com/abdullahals128-2143s-projects/wedplan-client
-- Server: https://github.com/abdullahals128-2143s-projects/wedplan-server
+- Client: https://github.com/alsabbir128/wedplan-client
+- Server: https://github.com/alsabbir128/wedplan-server
 - Live website: not deployed yet
