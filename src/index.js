@@ -7,6 +7,10 @@ import { errorHandler, notFound } from './middleware/errors.js'
 import healthRouter from './routes/health.js'
 import servicesRouter from './routes/services.js'
 import bookingsRouter from './routes/bookings.js'
+import adminRouter from './routes/admin.js'
+import paymentsRouter from './routes/payments.js'
+import { handleStripeWebhook } from './routes/stripe-webhook.js'
+import profileRouter from './routes/profile.js'
 
 const app = express()
 const allowedOrigins = (process.env.CLIENT_ORIGIN ?? 'http://localhost:3000')
@@ -16,12 +20,16 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN ?? 'http://localhost:3000')
 
 app.disable('x-powered-by')
 app.use(helmet())
-app.use(cors({ origin: allowedOrigins, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }))
+app.use(cors({ origin: allowedOrigins, methods: ['GET', 'POST', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'] }))
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook)
 app.use(express.json({ limit: '32kb' }))
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }))
 app.use('/api/health', healthRouter)
 app.use('/api/services', servicesRouter)
 app.use('/api/bookings', bookingsRouter)
+app.use('/api/admin', adminRouter)
+app.use('/api/payments', paymentsRouter)
+app.use('/api/profile', profileRouter)
 app.use(notFound)
 app.use(errorHandler)
 
