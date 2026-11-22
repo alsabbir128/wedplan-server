@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import { ObjectId } from 'mongodb'
 import { connectDatabase } from '../config/database.js'
+import { canTransitionBookingStatus, isSameOwnerId } from '../lib/marketplace.js'
 import { requireAuth } from '../middleware/auth.js'
 
 const router = Router()
-const statuses = new Set(['accepted', 'rejected'])
 
 router.post('/', requireAuth('customer'), async (request, response, next) => {
   try {
@@ -27,7 +27,7 @@ router.post('/', requireAuth('customer'), async (request, response, next) => {
     })
     if (!service) return response.status(404).json({ error: 'This service is no longer available' })
     const vendorId = service.vendorId?.toString()
-    if (!vendorId || vendorId === request.user.id) {
+    if (!vendorId || isSameOwnerId(vendorId, request.user.id)) {
       return response.status(403).json({ error: 'You cannot book your own service' })
     }
 
@@ -43,6 +43,7 @@ router.post('/', requireAuth('customer'), async (request, response, next) => {
 
     const booking = {
       serviceId: service._id,
+      serviceName: service.serviceName,
       vendorId,
       customerId: request.user.id,
       eventDate: day,
@@ -68,6 +69,25 @@ router.get('/mine', requireAuth('customer'), async (request, response, next) => 
   }
 })
 
+router.delete('/:id', requireAuth('customer'), async (request, response, next) => {
+  try {
+    if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: 'Invalid booking ID' })
+    const database = await connectDatabase()
+    const bookings = database.collection('bookings')
+    const result = await bookings.findOneAndUpdate(
+      { _id: new ObjectId(request.params.id), customerId: request.user.id, status: 'pending' },
+      { $set: { status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() } },
+      { returnDocument: 'after' },
+    )
+    if (result) return response.json({ item: result })
+    const owned = await bookings.findOne({ _id: new ObjectId(request.params.id), customerId: request.user.id }, { projection: { status: 1 } })
+    if (!owned) return response.status(404).json({ error: 'Booking request not found' })
+    response.status(409).json({ error: 'Only pending booking requests can be cancelled' })
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.get('/vendor', requireAuth('vendor'), async (request, response, next) => {
   try {
     const database = await connectDatabase()
@@ -82,7 +102,9 @@ router.patch('/:id/status', requireAuth('vendor'), async (request, response, nex
   try {
     if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: 'Invalid booking ID' })
     const { status } = request.body ?? {}
-    if (!statuses.has(status)) return response.status(400).json({ error: 'Status must be accepted or rejected' })
+    if (!canTransitionBookingStatus('pending', status, 'vendor')) {
+      return response.status(400).json({ error: 'Status must be accepted or rejected' })
+    }
     const database = await connectDatabase()
     const result = await database.collection('bookings').findOneAndUpdate(
       { _id: new ObjectId(request.params.id), vendorId: request.user.id, status: 'pending' },
