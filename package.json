@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "check": "node --check src/index.js && node --check src/routes/services.js && node --check src/routes/bookings.js"
+    "check": "node --check src/index.js && node --check src/routes/services.js && node --check src/routes/bookings.js && node --check src/routes/vendors.js && node --check src/routes/admin.js && node --check src/routes/subscriptions.js && node --check src/routes/stripe-webhooks.js && node --check src/routes/uploads.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
@@ -19,7 +20,8 @@
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
     "jose": "^6.1.0",
-    "mongodb": "^6.20.0"
-  },
-  "devDependencies": {}
+    "mongodb": "^6.20.0",
+    "multer": "^2.5.0",
+    "stripe": "^23.2.0"
+  }
 }
