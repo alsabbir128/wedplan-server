@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose'
-import { ObjectId } from 'mongodb'
 import { connectDatabase } from '../config/database.js'
+import { userIdFilter } from '../lib/identity.js'
 
 let remoteKeys
 
@@ -9,6 +9,10 @@ function getRemoteKeys() {
   if (!jwksUrl) throw new Error('BETTER_AUTH_JWKS_URL must be configured')
   if (!remoteKeys) remoteKeys = createRemoteJWKSet(new URL(jwksUrl))
   return remoteKeys
+}
+
+export function isAllowedRole(role, allowedRoles) {
+  return allowedRoles.length === 0 || allowedRoles.includes(role)
 }
 
 export function requireAuth(...allowedRoles) {
@@ -34,23 +38,21 @@ export function requireAuth(...allowedRoles) {
       }
 
       const database = await connectDatabase()
-      const userId = ObjectId.isValid(payload.sub) ? new ObjectId(payload.sub) : payload.sub
-      const user = await database.collection('users').findOne({
-        $or: [{ _id: userId }, { id: payload.sub }],
-      })
+      const user = await database.collection('users').findOne(userIdFilter(payload.sub))
       if (!user) return response.status(401).json({ error: 'Account not found' })
-      if (user.isBlocked) return response.status(403).json({ error: 'This account is blocked' })
-      if (allowedRoles.length && !allowedRoles.includes(user.role)) {
+      if (user.isBlocked === true) return response.status(403).json({ error: 'This account is blocked' })
+      const role = typeof user.role === 'string' ? user.role : 'customer'
+      if (!isAllowedRole(role, allowedRoles)) {
         return response.status(403).json({ error: 'You do not have permission to perform this action' })
       }
 
-      request.user = { id: user._id?.toString() ?? user.id, role: user.role, name: user.name, email: user.email }
-      next()
+      request.user = { id: user._id?.toString() ?? String(user.id), role, name: user.name, email: user.email }
+      return next()
     } catch (error) {
       if (error.code === 'ERR_JWT_EXPIRED' || error.code === 'ERR_JWS_INVALID' || error.code === 'ERR_JWT_CLAIM_VALIDATION_FAILED' || error.code === 'ERR_JWKS_NO_MATCHING_KEY') {
         return response.status(401).json({ error: 'Invalid or expired authentication token' })
       }
-      next(error)
+      return next(error)
     }
   }
 }
