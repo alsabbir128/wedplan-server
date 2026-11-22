@@ -20,11 +20,22 @@ router.get('/', async (request, response, next) => {
       filter.$or = [{ serviceName: { $regex: term, $options: 'i' } }, { description: { $regex: term, $options: 'i' } }]
     }
 
+    const blockedVendors = await database.collection('users').find({ role: 'vendor', isBlocked: true }, { projection: { _id: 1, id: 1 } }).toArray()
+    const blockedVendorIds = blockedVendors.flatMap((vendor) => [vendor._id?.toString(), vendor.id]).filter(Boolean)
+    if (blockedVendorIds.length) filter.vendorId = { $nin: blockedVendorIds }
     const order = sort === 'price-asc' ? { price: 1 } : sort === 'price-desc' ? { price: -1 } : { createdAt: -1 }
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       database.collection('services').find(filter).sort(order).skip((safePage - 1) * safeLimit).limit(safeLimit).toArray(),
       database.collection('services').countDocuments(filter),
     ])
+    const vendorIds = [...new Set(rawItems.map((item) => String(item.vendorId ?? '')).filter(Boolean))]
+    const objectIds = vendorIds.filter(ObjectId.isValid).map((id) => new ObjectId(id))
+    const vendors = vendorIds.length ? await database.collection('users').find({ $or: [
+      { id: { $in: vendorIds } },
+      ...(objectIds.length ? [{ _id: { $in: objectIds } }] : []),
+    ] }, { projection: { name: 1, businessName: 1 } }).toArray() : []
+    const vendorById = new Map(vendors.map((vendor) => [vendor._id?.toString() ?? vendor.id, vendor]))
+    const items = rawItems.map((item) => ({ ...item, vendor: vendorById.get(String(item.vendorId)) ?? null }))
     response.json({ items, pagination: { page: safePage, limit: safeLimit, total, pages: Math.ceil(total / safeLimit) } })
   } catch (error) {
     next(error)
@@ -166,7 +177,14 @@ router.get('/:id', async (request, response, next) => {
       _id: new ObjectId(request.params.id), status: 'approved', isActive: true,
     })
     if (!service) return response.status(404).json({ error: 'Service not found' })
-    response.json({ item: service })
+    const vendorKey = String(service.vendorId ?? '')
+    const vendorObjectId = ObjectId.isValid(vendorKey) ? new ObjectId(vendorKey) : null
+    const vendor = await database.collection('users').findOne({ $or: [
+      { id: vendorKey },
+      ...(vendorObjectId ? [{ _id: vendorObjectId }] : []),
+    ] }, { projection: { name: 1, businessName: 1, image: 1, isBlocked: 1 } })
+    if (!vendor || vendor.isBlocked) return response.status(404).json({ error: 'Service not found' })
+    response.json({ item: { ...service, vendor } })
   } catch (error) {
     next(error)
   }
@@ -197,7 +215,7 @@ function validateService({ serviceName, category, description, price, location, 
 }
 
 function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 export default router
