@@ -78,6 +78,22 @@ router.get('/vendor', requireAuth('vendor'), async (request, response, next) => 
   }
 })
 
+router.patch('/:id/cancel', requireAuth('customer'), async (request, response, next) => {
+  try {
+    if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: 'Invalid booking ID' })
+    const database = await connectDatabase()
+    const result = await database.collection('bookings').findOneAndUpdate(
+      { _id: new ObjectId(request.params.id), customerId: request.user.id, status: 'pending' },
+      { $set: { status: 'cancelled', updatedAt: new Date() } },
+      { returnDocument: 'after' },
+    )
+    if (!result) return response.status(404).json({ error: 'Pending booking request not found for this customer' })
+    response.json({ item: result })
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.patch('/:id/status', requireAuth('vendor'), async (request, response, next) => {
   try {
     if (!ObjectId.isValid(request.params.id)) return response.status(400).json({ error: 'Invalid booking ID' })
