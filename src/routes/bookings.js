@@ -6,6 +6,31 @@ import { requireAuth } from '../middleware/auth.js'
 const router = Router()
 const statuses = new Set(['accepted', 'rejected'])
 
+async function enrichBookings(database, items) {
+  const serviceKeys = [...new Set(items.map((item) => String(item.serviceId ?? '')).filter(Boolean))]
+  const userKeys = [...new Set(items.flatMap((item) => [String(item.vendorId ?? ''), String(item.customerId ?? '')]).filter(Boolean))]
+  const serviceObjectIds = serviceKeys.filter(ObjectId.isValid).map((id) => new ObjectId(id))
+  const userObjectIds = userKeys.filter(ObjectId.isValid).map((id) => new ObjectId(id))
+  const [services, users] = await Promise.all([
+    serviceKeys.length ? database.collection('services').find({ $or: [
+      { _id: { $in: serviceKeys } },
+      ...(serviceObjectIds.length ? [{ _id: { $in: serviceObjectIds } }] : []),
+    ] }, { projection: { serviceName: 1, images: 1, category: 1 } }).toArray() : [],
+    userKeys.length ? database.collection('users').find({ $or: [
+      { id: { $in: userKeys } },
+      ...(userObjectIds.length ? [{ _id: { $in: userObjectIds } }] : []),
+    ] }, { projection: { name: 1, email: 1, businessName: 1, image: 1 } }).toArray() : [],
+  ])
+  const serviceById = new Map(services.map((service) => [service._id.toString(), service]))
+  const userById = new Map(users.flatMap((user) => [[user._id?.toString(), user], [user.id, user]]).filter(([id]) => id))
+  return items.map((item) => ({
+    ...item,
+    service: serviceById.get(String(item.serviceId)) ?? null,
+    vendor: userById.get(String(item.vendorId)) ?? null,
+    customer: userById.get(String(item.customerId)) ?? null,
+  }))
+}
+
 router.post('/', requireAuth('customer'), async (request, response, next) => {
   try {
     const { serviceId, eventDate, eventLocation, message = '' } = request.body ?? {}
@@ -30,6 +55,12 @@ router.post('/', requireAuth('customer'), async (request, response, next) => {
     if (!vendorId || vendorId === request.user.id) {
       return response.status(403).json({ error: 'You cannot book your own service' })
     }
+    const vendorObjectId = ObjectId.isValid(vendorId) ? new ObjectId(vendorId) : null
+    const vendor = await database.collection('users').findOne({ $or: [
+      { id: vendorId },
+      ...(vendorObjectId ? [{ _id: vendorObjectId }] : []),
+    ] }, { projection: { isBlocked: 1 } })
+    if (!vendor || vendor.isBlocked) return response.status(404).json({ error: 'This service is no longer available.' })
 
     const day = date.toISOString().slice(0, 10)
     const bookings = database.collection('bookings')
@@ -62,7 +93,7 @@ router.get('/mine', requireAuth('customer'), async (request, response, next) => 
   try {
     const database = await connectDatabase()
     const items = await database.collection('bookings').find({ customerId: request.user.id }).sort({ createdAt: -1 }).toArray()
-    response.json({ items })
+    response.json({ items: await enrichBookings(database, items) })
   } catch (error) {
     next(error)
   }
@@ -72,7 +103,7 @@ router.get('/vendor', requireAuth('vendor'), async (request, response, next) => 
   try {
     const database = await connectDatabase()
     const items = await database.collection('bookings').find({ vendorId: request.user.id }).sort({ createdAt: -1 }).toArray()
-    response.json({ items })
+    response.json({ items: await enrichBookings(database, items) })
   } catch (error) {
     next(error)
   }
