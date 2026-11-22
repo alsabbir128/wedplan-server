@@ -8,7 +8,9 @@ Express API for the WedPlan wedding planning platform. This separate server proj
 - MongoDB Atlas connection via `MONGODB_URI` using the native driver
 - Public listing/detail endpoints return approved, active services only, with keyword, category, location, pagination, and price sorting
 - Better Auth-compatible remote JWKS JWT verification, with user role and blocked-account state loaded from MongoDB
-- Booking creation scoped to the authenticated customer, plus vendor-owned request review and atomic pending-only status changes
+- Booking creation scoped to authenticated customers, vendor-owned request review, and customer cancellation
+- Admin-only user blocking, service moderation, and transaction listing; profile updates cannot change role or subscription state
+- Stripe Checkout subscriptions with idempotency keys and signature-verified webhook activation/expiration
 - Consistent 400/401/403/404/409 errors and health endpoint
 
 ## Technology
@@ -34,6 +36,11 @@ Node.js 20+, Express 5, MongoDB Node.js Driver, jose, Helmet, CORS, express-rate
 | `BETTER_AUTH_JWKS_URL` | Better Auth JSON Web Key Set endpoint used to verify bearer tokens |
 | `BETTER_AUTH_ISSUER` | Expected token issuer |
 | `BETTER_AUTH_AUDIENCE` | Expected token audience |
+| `STRIPE_SECRET_KEY` | Server-only Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | Server-only signing secret for the Stripe webhook |
+| `CLIENT_URL` | Public client origin used for Checkout return URLs (or set `CLIENT_ORIGIN`) |
+
+Stripe Checkout creates a $19/month Premium subscription. Configure the webhook endpoint at `/api/payments/webhook` for `checkout.session.completed`, `customer.subscription.updated`, and `customer.subscription.deleted`. Premium is never enabled by the browser return URL; it is enabled only after the signed webhook is verified.
 
 Better Auth must be configured to issue RS256 JWTs with matching issuer and audience and expose the configured JWKS URL. API access is denied when JWT verification or the authoritative MongoDB user-role lookup fails.
 
@@ -46,6 +53,12 @@ Better Auth must be configured to issue RS256 JWTs with matching issuer and audi
 - `GET /api/bookings/mine` (customer bearer token)
 - `GET /api/bookings/vendor` (vendor bearer token)
 - `PATCH /api/bookings/:id/status` (vendor bearer token; status `accepted` or `rejected`)
+- `PATCH /api/profile` (authenticated user; editable profile fields only)
+- `GET /api/admin/users`, `PATCH /api/admin/users/:id/block` (admin bearer token)
+- `GET /api/admin/services`, `PATCH /api/admin/services/:id/review`, `DELETE /api/admin/services/:id` (admin bearer token)
+- `GET /api/admin/transactions` (admin bearer token)
+- `POST /api/payments/checkout`, `POST /api/payments/cancel` (vendor bearer token)
+- `POST /api/payments/webhook` (Stripe signature required)
 
 Protected routes require a valid Better Auth JWT in `Authorization: Bearer <token>`. Roles and blocked status are read from the database; request-supplied roles are never trusted.
 
