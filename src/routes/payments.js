@@ -22,7 +22,7 @@ router.post('/cancel', requireAuth('vendor'), async (request, response, next) =>
     const expiration = new Date(subscription.current_period_end * 1000)
     await database.collection('users').updateOne(
       { _id: vendor._id },
-      { $set: { subscriptionExpiresAt: expiration } },
+      { $set: { subscriptionExpiresAt: expiration, subscriptionCancelAtPeriodEnd: true } },
     )
     response.json({ success: true, subscriptionExpiresAt: expiration })
   } catch (error) { next(error) }
