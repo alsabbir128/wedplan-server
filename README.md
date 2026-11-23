@@ -72,7 +72,7 @@ The API shares the `users` collection with Better Auth and stores marketplace da
 
 ## Deployment
 
-Deploy this directory as a separate Node.js service. Set the environment variables in the deployment platform, configure the client origin(s), and ensure the Better Auth issuer/audience/JWKS settings match the client authentication setup. Never expose MongoDB or signing credentials to the browser.
+Deploy this repository as its own Vercel project, separate from the Next.js client. The root `index.js` exports the Express app for Vercel Functions; local development continues to start the listener from `src/index.js`. Set the environment variables listed above on the API project, configure `CLIENT_ORIGIN` and `CLIENT_APP_URL` with the production client URL, and ensure the Better Auth issuer/audience/JWKS settings match the client authentication setup. Set `API_SERVER_ORIGIN` on the client project to the API project’s production origin. Never expose MongoDB or signing credentials to the browser.
 
 ## Repository links
 

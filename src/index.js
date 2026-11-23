@@ -40,4 +40,9 @@ app.use(notFound)
 app.use(errorHandler)
 
 const port = Number.parseInt(process.env.PORT ?? '4000', 10)
-app.listen(port, () => process.stdout.write(`WedPlan API listening on port ${port}\n`))
+
+if (!process.env.VERCEL) {
+  app.listen(port, () => process.stdout.write(`WedPlan API listening on port ${port}\n`))
+}
+
+export default app
