@@ -21,7 +21,7 @@ Node.js 20+, Express 5, MongoDB Node.js Driver, Stripe Node SDK, Multer, jose, H
 ## Local setup
 
 1. Install Node.js 20 or newer.
-2. Copy `.env.example` to `.env` and set values from your MongoDB Atlas and Better Auth configuration. Never commit `.env` or production credentials.
+2. Copy `.env.example` to `.env` and use the same MongoDB database as the Next.js client’s Better Auth setup. Leave `MONGODB_DB` unset unless the client uses that exact explicit database name. Never commit `.env` or production credentials.
 3. Run `npm install`.
 4. Configure `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the monthly `STRIPE_VENDOR_PRICE_ID` on the API deployment. Add the webhook URL `/api/webhooks/stripe` in Stripe and subscribe to `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`.
 5. Configure `IMGBB_API_KEY` on the API deployment if vendors should upload service images.
@@ -34,7 +34,7 @@ Node.js 20+, Express 5, MongoDB Node.js Driver, Stripe Node SDK, Multer, jose, H
 | --- | --- |
 | `PORT` | API listen port (default `4000`) |
 | `MONGODB_URI` | MongoDB Atlas connection string; secret |
-| `MONGODB_DB` | Business database name (optional if URI selects it) |
+| `MONGODB_DB` | Optional explicit database override. If the client relies on the MongoDB URI default, omit this variable in the API too. |
 | `CLIENT_ORIGIN` | Comma-separated exact client origins allowed by CORS |
 | `BETTER_AUTH_JWKS_URL` | Better Auth JSON Web Key Set endpoint used to verify bearer tokens |
 | `BETTER_AUTH_ISSUER` | Expected token issuer |
@@ -68,14 +68,15 @@ Protected routes require a valid Better Auth JWT in `Authorization: Bearer <toke
 
 ## Data model
 
-The API shares the `users` collection with Better Auth and stores marketplace data in `vendorApplications`, `vendorProfiles`, `services`, `bookings`, `subscriptions`, and `stripeWebhookEvents`. Business records reference user, service, vendor, and customer IDs. Stripe event IDs are unique receipts; event handlers use repeatable state updates so retries do not create duplicate entitlements.
+The API must connect to the same MongoDB database as the client’s Better Auth configuration before it can resolve users or roles. It shares the `users` collection with Better Auth and stores marketplace data in `vendorApplications`, `vendorProfiles`, `services`, `bookings`, `subscriptions`, and `stripeWebhookEvents`. Business records reference user, service, vendor, and customer IDs. Stripe event IDs are unique receipts; event handlers use repeatable state updates so retries do not create duplicate entitlements.
 
 ## Deployment
 
-Deploy this repository as its own Vercel project, separate from the Next.js client. The root `index.js` exports the Express app for Vercel Functions; local development continues to start the listener from `src/index.js`. Set the environment variables listed above on the API project, configure `CLIENT_ORIGIN` and `CLIENT_APP_URL` with the production client URL, and ensure the Better Auth issuer/audience/JWKS settings match the client authentication setup. Set `API_SERVER_ORIGIN` on the client project to the API project’s production origin. Never expose MongoDB or signing credentials to the browser.
+Deploy this repository as its own Vercel project, separate from the Next.js client. The root `index.js` exports the Express app for Vercel Functions; local development continues to start the listener from `src/index.js`. Set the environment variables listed above on the API project, configure `CLIENT_ORIGIN` and `CLIENT_APP_URL` with the production client URL, and ensure the Better Auth issuer/audience/JWKS settings match the client authentication setup. Use the same MongoDB database as the client; omit `MONGODB_DB` if the client relies on the URI default. Set `API_SERVER_ORIGIN` on the client project to the API project’s production origin. Never expose MongoDB or signing credentials to the browser.
 
 ## Repository links
 
 - Client: https://github.com/alsabbir128/wedplan-client
 - Server: https://github.com/alsabbir128/wedplan-server
-- Live website: not deployed yet
+- Live website: https://wedplan-server-kappa.vercel.app
+- Live API: https://wedplan-marketplace-api.vercel.app
